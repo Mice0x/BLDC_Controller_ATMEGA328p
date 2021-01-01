@@ -5,11 +5,9 @@
 
 #include <Wire.h> 
 
-#define SPEED_UP          A0          // BLDC motor speed-up button
-#define SPEED_DOWN        A1          // BLDC motor speed-down button
 #define PWM_MAX_DUTY      255
 #define PWM_MIN_DUTY      50
-#define PWM_START_DUTY    100
+#define PWM_START_DUTY    50
 
 byte pwm_receive;
 byte bldc_step = 0, motor_speed;
@@ -27,8 +25,6 @@ void setup() {
   TCCR2B = 0x01;
   // Analog comparator setting
   ACSR   = 0x10;           // Disable and clear (flag bit) analog comparator interrupt
-  pinMode(SPEED_UP,   INPUT_PULLUP);
-  pinMode(SPEED_DOWN, INPUT_PULLUP);
   
   Wire.begin(0x08);
 
@@ -93,16 +89,18 @@ void loop() {
   motor_speed = PWM_START_DUTY;
   ACSR |= 0x08;                    // Enable analog comparator interrupt
   while(1) {
-    while(!(digitalRead(SPEED_UP)) && motor_speed < PWM_MAX_DUTY){
+    while(motor_speed < pwm_receive && motor_speed < PWM_MAX_DUTY){
       motor_speed++;
       SET_PWM_DUTY(motor_speed);
-      delay(100);
+      delay(20);
     }
-    while(!(digitalRead(SPEED_DOWN)) && motor_speed > PWM_MIN_DUTY){
+    while(motor_speed > pwm_receive  && motor_speed > PWM_MIN_DUTY){
       motor_speed--;
       SET_PWM_DUTY(motor_speed);
-      delay(100);
+      delay(20);
     }
+   Serial.print(motor_speed);
+   Serial.print(" "); // a space ' ' or  tab '\t' character is printed between the two values.
    Serial.println(pwm_receive);
   }
 }
