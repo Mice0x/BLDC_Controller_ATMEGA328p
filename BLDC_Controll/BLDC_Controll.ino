@@ -2,14 +2,16 @@
  * This is a free software with NO WARRANTY.
  * https://simple-circuit.com/
  */
- 
- 
+
+#include <Wire.h> 
+
 #define SPEED_UP          A0          // BLDC motor speed-up button
 #define SPEED_DOWN        A1          // BLDC motor speed-down button
 #define PWM_MAX_DUTY      255
 #define PWM_MIN_DUTY      50
 #define PWM_START_DUTY    100
- 
+
+byte pwm_receive;
 byte bldc_step = 0, motor_speed;
 unsigned int i;
 void setup() {
@@ -27,6 +29,11 @@ void setup() {
   ACSR   = 0x10;           // Disable and clear (flag bit) analog comparator interrupt
   pinMode(SPEED_UP,   INPUT_PULLUP);
   pinMode(SPEED_DOWN, INPUT_PULLUP);
+  
+  Wire.begin(0x08);
+
+  Wire.onReceive(pwmRcv);
+  Serial.begin(9600);
 }
 // Analog comparator ISR
 ISR (ANALOG_COMP_vect) {
@@ -96,8 +103,15 @@ void loop() {
       SET_PWM_DUTY(motor_speed);
       delay(100);
     }
+   Serial.println(pwm_receive);
   }
 }
+
+ void pwmRcv(int numBytes){
+        while(Wire.available()){
+          pwm_receive = Wire.read();
+          }
+      }
  
 void BEMF_A_RISING(){
   ADCSRB = (0 << ACME);    // Select AIN1 as comparator negative input
