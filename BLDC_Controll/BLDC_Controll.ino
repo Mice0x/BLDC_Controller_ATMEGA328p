@@ -114,9 +114,6 @@ void loop() {
     if (!(motor_on)) {
       motorStart();
     }
-    if ((motor_speed > 0 and pwm_receive < 0) or (motor_speed < 0 and pwm_receive > 0)) {
-      motorStop();
-    }
     if (pwm_receive < 50) {
       motorStop();
     }
