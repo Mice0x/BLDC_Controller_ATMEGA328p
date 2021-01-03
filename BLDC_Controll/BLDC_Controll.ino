@@ -43,9 +43,9 @@ ISR (ANALOG_COMP_vect) {
       if ((ACSR & 0x20))  i -= 1;
     }
   }
-  if (pwm_receive > 0) {
+  if (dir_receive == 1) {
     bldc_move();
-  } else if (pwm_receive < 0) {
+  } else {
     bldc_reverse();
   }
   bldc_step++;
@@ -113,34 +113,28 @@ void loop() {
   while (1) {
 
     if (!(motor_on)) {
-//      delay(100);
       motorStart();
     }
-    /*if ((motor_speed > 0 and pwm_receive < 0) or (motor_speed < 0 and pwm_receive > 0)) {
+    if ((motor_speed > 0 and pwm_receive < 0) or (motor_speed < 0 and pwm_receive > 0)) {
       motorStop();
-    }*/
-    while (abs(motor_speed) < abs(pwm_receive) && abs(motor_speed) < 255) {
-      if (motor_speed > 0) {
-        motor_speed++;
-      } else {
-        motor_speed--;
-      }
-      SET_PWM_DUTY(abs(motor_speed));
+    }
+    if (pwm_receive < 50) {
+      motorStop();
+    }
+    while (motor_speed < pwm_receive && motor_speed < 255 && motor_on) {
+      motor_speed++;
+      SET_PWM_DUTY(motor_speed);
       delay(20);
     }
-    while (abs(motor_speed) > abs(pwm_receive)  && abs(motor_speed) > 0) {
-      if (motor_speed > 0) {
-        motor_speed--;
-      } else {
-        motor_speed++;
-      }
-      SET_PWM_DUTY(abs(motor_speed));
+    while (motor_speed > pwm_receive  && motor_speed > 0 && motor_on) {
+      motor_speed--;
+      SET_PWM_DUTY(motor_speed);
       delay(20);
     }
 
-    Serial.print(motor_speed);
-    Serial.print(" ");
-    Serial.println(pwm_receive);
+    //Serial.print(motor_speed);
+    //Serial.print(" ");
+    //Serial.println(pwm_receive);
 
   }
 }
@@ -152,9 +146,9 @@ void motorStart() {
     // Motor start
     while (i > 100) {
       delayMicroseconds(i);
-      if (pwm_receive > 0) {
+      if (dir_receive == 1) {
         bldc_move();
-      } else if (pwm_receive < 0) {
+      } else {
         bldc_reverse();
       }
       bldc_step++;
@@ -162,15 +156,20 @@ void motorStart() {
       i = i - 20;
     }
     motor_speed = pwm_receive;
-//    Serial.println(motor_speed);
+    //    Serial.println(motor_speed);
     motor_on = true;
     ACSR |= 0x08;                    // Enable analog comparator interrupt
   }
 }
 
 void motorStop() {
-  ACSR   = 0x10;
+  while (motor_speed > 20) {
+    motor_speed--;
+    SET_PWM_DUTY(motor_speed);
+    delay(20);
+  }
   SET_PWM_DUTY(0);
+  ACSR   = 0x10;
   motor_on = false;
   delay(100);
 }
@@ -179,9 +178,6 @@ void pwmRcv(int numBytes) {
   while (Wire.available()) {
     pwm_receive = Wire.read();
     dir_receive = Wire.read();
-    if (!(dir_receive)) {
-      pwm_receive *= -1;
-    }
   }
 }
 

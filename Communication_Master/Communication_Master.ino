@@ -1,5 +1,5 @@
 #include <Wire.h>
-byte pwm = 50;
+byte pwm = 200;
 bool dir = false;
 byte data [2] = {pwm, dir};
 void setup() {
