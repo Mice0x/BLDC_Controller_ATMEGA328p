@@ -30,7 +30,6 @@ void setup() {
   Wire.begin(ADDRESS);
 
   Wire.onReceive(pwmRcv);
-  Serial.begin(9600);
 }
 // Analog comparator ISR
 ISR (ANALOG_COMP_vect) {
@@ -131,17 +130,12 @@ void loop() {
       SET_PWM_DUTY(motor_speed);
       delay(20);
     }
-
-    //Serial.print(motor_speed);
-    //Serial.print(" ");
-    //Serial.println(pwm_receive);
-
   }
 }
 
 void motorStart() {
   if (abs(pwm_receive) >= PWM_MIN_DUTY) {
-    SET_PWM_DUTY(abs(pwm_receive));    // Setup starting PWM with duty cycle = PWM_START_DUTY
+    SET_PWM_DUTY(abs(pwm_receive));
     i = 5000;
     // Motor start
     while (i > 100) {
@@ -156,7 +150,6 @@ void motorStart() {
       i = i - 20;
     }
     motor_speed = pwm_receive;
-    //    Serial.println(motor_speed);
     motor_on = true;
     ACSR |= 0x08;                    // Enable analog comparator interrupt
   }
