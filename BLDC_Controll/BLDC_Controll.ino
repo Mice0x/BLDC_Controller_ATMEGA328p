@@ -1,15 +1,16 @@
 /* Sensorless brushless DC (BLDC) motor control with Arduino UNO (Arduino DIY ESC).
- * This is a free software with NO WARRANTY.
- * https://simple-circuit.com/
- */
+   This is a free software with NO WARRANTY.
+   https://simple-circuit.com/
+*/
 
-#include <Wire.h> 
+#include <Wire.h>
 
-#define PWM_MAX_DUTY      255
-#define PWM_MIN_DUTY      50
-#define PWM_START_DUTY    50
+#define ADDRESS       0x08
+#define PWM_MIN_DUTY  50
 
-byte pwm_receive;
+bool motor_on = false;
+int pwm_receive;
+byte dir_receive;
 byte bldc_step = 0, motor_speed;
 unsigned int i;
 void setup() {
@@ -25,8 +26,8 @@ void setup() {
   TCCR2B = 0x01;
   // Analog comparator setting
   ACSR   = 0x10;           // Disable and clear (flag bit) analog comparator interrupt
-  
-  Wire.begin(0x08);
+
+  Wire.begin(ADDRESS);
 
   Wire.onReceive(pwmRcv);
   Serial.begin(9600);
@@ -34,20 +35,24 @@ void setup() {
 // Analog comparator ISR
 ISR (ANALOG_COMP_vect) {
   // BEMF debounce
-  for(i = 0; i < 10; i++) {
-    if(bldc_step & 1){
-      if(!(ACSR & 0x20)) i -= 1;
+  for (i = 0; i < 10; i++) {
+    if (bldc_step & 1) {
+      if (!(ACSR & 0x20)) i -= 1;
     }
     else {
-      if((ACSR & 0x20))  i -= 1;
+      if ((ACSR & 0x20))  i -= 1;
     }
   }
-  bldc_move();
+  if (pwm_receive > 0) {
+    bldc_move();
+  } else if (pwm_receive < 0) {
+    bldc_reverse();
+  }
   bldc_step++;
   bldc_step %= 6;
 }
-void bldc_move(){        // BLDC motor commutation function
-  switch(bldc_step){
+void bldc_move() {       // BLDC motor commutation function
+  switch (bldc_step) {
     case 0:
       AH_BL();
       BEMF_C_RISING();
@@ -74,118 +79,183 @@ void bldc_move(){        // BLDC motor commutation function
       break;
   }
 }
- 
-void loop() {
-  SET_PWM_DUTY(PWM_START_DUTY);    // Setup starting PWM with duty cycle = PWM_START_DUTY
-  i = 5000;
-  // Motor start
-  while(i > 100) {
-    delayMicroseconds(i);
-    bldc_move();
-    bldc_step++;
-    bldc_step %= 6;
-    i = i - 20;
-  }
-  motor_speed = PWM_START_DUTY;
-  ACSR |= 0x08;                    // Enable analog comparator interrupt
-  while(1) {
-    while(motor_speed < pwm_receive && motor_speed < PWM_MAX_DUTY){
-      motor_speed++;
-      SET_PWM_DUTY(motor_speed);
-      delay(20);
-    }
-    while(motor_speed > pwm_receive  && motor_speed > PWM_MIN_DUTY){
-      motor_speed--;
-      SET_PWM_DUTY(motor_speed);
-      delay(20);
-    }
-   Serial.print(motor_speed);
-   Serial.print(" "); // a space ' ' or  tab '\t' character is printed between the two values.
-   Serial.println(pwm_receive);
+
+void bldc_reverse() {
+  switch (bldc_step) {
+    case 5:
+      AH_BL();
+      BEMF_C_RISING();
+      break;
+    case 4:
+      AH_CL();
+      BEMF_B_FALLING();
+      break;
+    case 3:
+      BH_CL();
+      BEMF_A_RISING();
+      break;
+    case 2:
+      BH_AL();
+      BEMF_C_FALLING();
+      break;
+    case 1:
+      CH_AL();
+      BEMF_B_RISING();
+      break;
+    case 0:
+      CH_BL();
+      BEMF_A_FALLING();
+      break;
   }
 }
 
- void pwmRcv(int numBytes){
-        while(Wire.available()){
-          pwm_receive = Wire.read();
-          }
+void loop() {
+  while (1) {
+
+    if (!(motor_on)) {
+//      delay(100);
+      motorStart();
+    }
+    /*if ((motor_speed > 0 and pwm_receive < 0) or (motor_speed < 0 and pwm_receive > 0)) {
+      motorStop();
+    }*/
+    while (abs(motor_speed) < abs(pwm_receive) && abs(motor_speed) < 255) {
+      if (motor_speed > 0) {
+        motor_speed++;
+      } else {
+        motor_speed--;
       }
- 
-void BEMF_A_RISING(){
+      SET_PWM_DUTY(abs(motor_speed));
+      delay(20);
+    }
+    while (abs(motor_speed) > abs(pwm_receive)  && abs(motor_speed) > 0) {
+      if (motor_speed > 0) {
+        motor_speed--;
+      } else {
+        motor_speed++;
+      }
+      SET_PWM_DUTY(abs(motor_speed));
+      delay(20);
+    }
+
+    Serial.print(motor_speed);
+    Serial.print(" ");
+    Serial.println(pwm_receive);
+
+  }
+}
+
+void motorStart() {
+  if (abs(pwm_receive) >= PWM_MIN_DUTY) {
+    SET_PWM_DUTY(abs(pwm_receive));    // Setup starting PWM with duty cycle = PWM_START_DUTY
+    i = 5000;
+    // Motor start
+    while (i > 100) {
+      delayMicroseconds(i);
+      if (pwm_receive > 0) {
+        bldc_move();
+      } else if (pwm_receive < 0) {
+        bldc_reverse();
+      }
+      bldc_step++;
+      bldc_step %= 6;
+      i = i - 20;
+    }
+    motor_speed = pwm_receive;
+//    Serial.println(motor_speed);
+    motor_on = true;
+    ACSR |= 0x08;                    // Enable analog comparator interrupt
+  }
+}
+
+void motorStop() {
+  ACSR   = 0x10;
+  SET_PWM_DUTY(0);
+  motor_on = false;
+  delay(100);
+}
+
+void pwmRcv(int numBytes) {
+  while (Wire.available()) {
+    pwm_receive = Wire.read();
+    dir_receive = Wire.read();
+    if (!(dir_receive)) {
+      pwm_receive *= -1;
+    }
+  }
+}
+
+void BEMF_A_RISING() {
   ADCSRB = (0 << ACME);    // Select AIN1 as comparator negative input
   ACSR |= 0x03;            // Set interrupt on rising edge
 }
-void BEMF_A_FALLING(){
+void BEMF_A_FALLING() {
   ADCSRB = (0 << ACME);    // Select AIN1 as comparator negative input
   ACSR &= ~0x01;           // Set interrupt on falling edge
 }
-void BEMF_B_RISING(){
+void BEMF_B_RISING() {
   ADCSRA = (0 << ADEN);   // Disable the ADC module
   ADCSRB = (1 << ACME);
   ADMUX = 2;              // Select analog channel 2 as comparator negative input
   ACSR |= 0x03;
 }
-void BEMF_B_FALLING(){
+void BEMF_B_FALLING() {
   ADCSRA = (0 << ADEN);   // Disable the ADC module
   ADCSRB = (1 << ACME);
   ADMUX = 2;              // Select analog channel 2 as comparator negative input
   ACSR &= ~0x01;
 }
-void BEMF_C_RISING(){
+void BEMF_C_RISING() {
   ADCSRA = (0 << ADEN);   // Disable the ADC module
   ADCSRB = (1 << ACME);
   ADMUX = 3;              // Select analog channel 3 as comparator negative input
   ACSR |= 0x03;
 }
-void BEMF_C_FALLING(){
+void BEMF_C_FALLING() {
   ADCSRA = (0 << ADEN);   // Disable the ADC module
   ADCSRB = (1 << ACME);
   ADMUX = 3;              // Select analog channel 3 as comparator negative input
   ACSR &= ~0x01;
 }
- 
-void AH_BL(){
+
+void AH_BL() {
   PORTD &= ~0x28;
   PORTD |=  0x10;
   TCCR1A =  0;            // Turn pin 11 (OC2A) PWM ON (pin 9 & pin 10 OFF)
   TCCR2A =  0x81;         //
 }
-void AH_CL(){
+void AH_CL() {
   PORTD &= ~0x30;
   PORTD |=  0x08;
   TCCR1A =  0;            // Turn pin 11 (OC2A) PWM ON (pin 9 & pin 10 OFF)
   TCCR2A =  0x81;         //
 }
-void BH_CL(){
+void BH_CL() {
   PORTD &= ~0x30;
   PORTD |=  0x08;
   TCCR2A =  0;            // Turn pin 10 (OC1B) PWM ON (pin 9 & pin 11 OFF)
   TCCR1A =  0x21;         //
 }
-void BH_AL(){
+void BH_AL() {
   PORTD &= ~0x18;
   PORTD |=  0x20;
   TCCR2A =  0;            // Turn pin 10 (OC1B) PWM ON (pin 9 & pin 11 OFF)
   TCCR1A =  0x21;         //
 }
-void CH_AL(){
+void CH_AL() {
   PORTD &= ~0x18;
   PORTD |=  0x20;
   TCCR2A =  0;            // Turn pin 9 (OC1A) PWM ON (pin 10 & pin 11 OFF)
   TCCR1A =  0x81;         //
 }
-void CH_BL(){
+void CH_BL() {
   PORTD &= ~0x28;
   PORTD |=  0x10;
   TCCR2A =  0;            // Turn pin 9 (OC1A) PWM ON (pin 10 & pin 11 OFF)
   TCCR1A =  0x81;         //
 }
- 
-void SET_PWM_DUTY(byte duty){
-  if(duty < PWM_MIN_DUTY)
-    duty  = PWM_MIN_DUTY;
-  if(duty > PWM_MAX_DUTY)
-    duty  = PWM_MAX_DUTY;
+
+void SET_PWM_DUTY(byte duty) {
   OCR1A  = duty;                   // Set pin 9  PWM duty cycle
   OCR1B  = duty;                   // Set pin 10 PWM duty cycle
   OCR2A  = duty;                   // Set pin 11 PWM duty cycle

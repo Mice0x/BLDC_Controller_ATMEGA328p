@@ -1,15 +1,13 @@
 #include <Wire.h>
-byte pwm = 100;
+byte pwm = 50;
+bool dir = false;
+byte data [2] = {pwm, dir};
 void setup() {
- Wire.begin();
-
- 
-
+Wire.begin();
 }
 
 void loop() {
   Wire.beginTransmission(0x08);
-
-  Wire.write(pwm);
+  Wire.write(data, 2);
   Wire.endTransmission();
 }
