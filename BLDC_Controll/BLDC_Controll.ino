@@ -6,7 +6,6 @@
 #include <Wire.h>
 
 #define ADDRESS       0x08
-#define PWM_MIN_DUTY  50
 
 bool motor_on = false;
 int pwm_receive;
