@@ -6,6 +6,11 @@
 #include <Wire.h>
 
 #define ADDRESS       0x08
+#define PWM_MIN_DUTY  50
+
+int motor_stuck = false;
+int timer = 0;
+int times_measured = 0;
 
 bool motor_on = false;
 int pwm_receive;
@@ -26,10 +31,29 @@ void setup() {
   // Analog comparator setting
   ACSR   = 0x10;           // Disable and clear (flag bit) analog comparator interrupt
 
+
+  TCCR0A = (1 << WGM01); //Set the CTC mode
+  OCR0A = 0xF9; //Value for ORC0A for 1ms
+
+  TIMSK0 |= (1 << OCIE0A); //Set the interrupt request
+  sei(); //Enable interrupt
+
+  TCCR0B |= (1 << CS01); //Set the prescale 1/64 clock
+  TCCR0B |= (1 << CS00);
+  pinMode(13, OUTPUT);
+
+
   Wire.begin(ADDRESS);
 
   Wire.onReceive(pwmRcv);
+
+  Serial.begin(9600);
 }
+
+ISR(TIMER0_COMPA_vect) {   //This is the interrupt request
+  timer++;
+}
+
 // Analog comparator ISR
 ISR (ANALOG_COMP_vect) {
   // BEMF debounce
@@ -41,6 +65,7 @@ ISR (ANALOG_COMP_vect) {
       if ((ACSR & 0x20))  i -= 1;
     }
   }
+
   if (dir_receive == 1) {
     bldc_move();
   } else {
@@ -48,6 +73,7 @@ ISR (ANALOG_COMP_vect) {
   }
   bldc_step++;
   bldc_step %= 6;
+  timer = 0;
 }
 void bldc_move() {       // BLDC motor commutation function
   switch (bldc_step) {
@@ -79,10 +105,12 @@ void bldc_move() {       // BLDC motor commutation function
 }
 
 void bldc_reverse() {
+
   switch (bldc_step) {
     case 5:
       AH_BL();
       BEMF_C_RISING();
+      timer = 0;
       break;
     case 4:
       AH_CL();
@@ -109,8 +137,16 @@ void bldc_reverse() {
 
 void loop() {
   while (1) {
-
-    if (!(motor_on)) {
+    if (timer >= 2000) {
+      motorStop();
+      motor_stuck = true;
+      digitalWrite(13, HIGH);
+    }
+    if (motor_stuck && timer >= 1000) {
+      motor_stuck = false;
+      digitalWrite(13, LOW);
+    }
+    if (!(motor_on) && !(motor_stuck)) {
       motorStart();
     }
     if (pwm_receive < 50) {
@@ -126,12 +162,14 @@ void loop() {
       SET_PWM_DUTY(motor_speed);
       delay(20);
     }
+    Serial.println(timer);
   }
+
 }
 
 void motorStart() {
-  if (pwm_receive >= PWM_MIN_DUTY) {
-    SET_PWM_DUTY(pwm_receive);
+  if (abs(pwm_receive) >= PWM_MIN_DUTY) {
+    SET_PWM_DUTY(abs(pwm_receive));
     i = 5000;
     // Motor start
     while (i > 100) {
@@ -148,6 +186,7 @@ void motorStart() {
     motor_speed = pwm_receive;
     motor_on = true;
     ACSR |= 0x08;                    // Enable analog comparator interrupt
+    timer = 0;
   }
 }
 
@@ -161,6 +200,7 @@ void motorStop() {
   ACSR   = 0x10;
   motor_on = false;
   delay(100);
+  timer = 0;
 }
 
 void pwmRcv(int numBytes) {
