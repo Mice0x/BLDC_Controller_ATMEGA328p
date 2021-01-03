@@ -131,8 +131,8 @@ void loop() {
 }
 
 void motorStart() {
-  if (abs(pwm_receive) >= PWM_MIN_DUTY) {
-    SET_PWM_DUTY(abs(pwm_receive));
+  if (pwm_receive >= PWM_MIN_DUTY) {
+    SET_PWM_DUTY(pwm_receive);
     i = 5000;
     // Motor start
     while (i > 100) {
