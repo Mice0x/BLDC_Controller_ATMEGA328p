@@ -8,10 +8,17 @@
 #define ADDRESS       0x08
 #define PWM_MIN_DUTY  50
 
-int motor_stuck = false;
-long start = 0;
-long zyklus = 0;
-int times_measured = 0;
+
+//benoetigte variablen fuer das messen wenn der Motor stehen bleibt
+long start_t = 0;
+int step_t = 0; // die die fuer einen Step benoetigt Zeit
+long x = 0;
+int j = 0;
+long y = 0;
+long s = 0; //standartabweichung
+long median = 0;
+
+int cnt = 0;
 
 bool motor_on = false;
 int pwm_receive;
@@ -31,16 +38,8 @@ void setup() {
   TCCR2B = 0x01;
   // Analog comparator setting
   ACSR   = 0x10;           // Disable and clear (flag bit) analog comparator interrupt
-
-
-
-
-  start = micros();
   Wire.begin(ADDRESS);
-
   Wire.onReceive(pwmRcv);
-
-  Serial.begin(9600);
 }
 
 
@@ -55,17 +54,21 @@ ISR (ANALOG_COMP_vect) {
       if ((ACSR & 0x20))  i -= 1;
     }
   }
-  
+
   if (dir_receive == 1) {
     bldc_move();
   } else {
     bldc_reverse();
   }
-  zyklus = micros() - start;
-  start = micros();
+
+  step_t = micros() - start_t; // ~ Zeit bis zum Naechsten step
+  j++;
+  x += step_t;
+  y += sq(step_t - median);
+  start_t = micros();
+
   bldc_step++;
   bldc_step %= 6;
-
 }
 void bldc_move() {       // BLDC motor commutation function
   switch (bldc_step) {
@@ -97,7 +100,7 @@ void bldc_move() {       // BLDC motor commutation function
 }
 
 void bldc_reverse() {
-  
+
   switch (bldc_step) {
     case 5:
       AH_BL();
@@ -128,19 +131,25 @@ void bldc_reverse() {
 
 void loop() {
   while (1) {
-    /*if (timer >= 2000) {
-      motorStop();
-      motor_stuck = true;
-      digitalWrite(13, HIGH);
+    if (j >= 10000) {
+      s = sqrt(y / j); //standart abweichung wird berechnet
+      median = x / j; //median wird berechnet
+      if (median < 90 && s > 20) {
+        if (cnt >= 1) {
+          rapidStop();
+          cnt = 0;
+          delay(1000);//Nachdem stehen geblieben wartet der Motor bis er versucht neu zu starten
+        } else {
+          cnt++;
+        }
+      } else {
+        cnt = 0;
+      }
+      y = 0;
+      x = 0;
+      j = 0;
     }
-    if (motor_stuck && timer >= 1000) {
-      motor_stuck = false;
-      digitalWrite(13, LOW);
-    }*/
-    
-    
-    
-    if (!(motor_on) && !(motor_stuck)) {
+    if (!(motor_on)) {
       motorStart();
     }
     if (pwm_receive < PWM_MIN_DUTY) {
@@ -156,8 +165,7 @@ void loop() {
       SET_PWM_DUTY(motor_speed);
       delay(20);
     }
-    
-    Serial.println(zyklus);
+
   }
 
 }
@@ -180,10 +188,16 @@ void motorStart() {
     }
     motor_speed = pwm_receive;
     motor_on = true;
+    s = 0;
+    median = 0;
     ACSR |= 0x08;                    // Enable analog comparator interrupt
   }
 }
-
+void rapidStop() {
+  ACSR   = 0x10;
+  SET_PWM_DUTY(0);
+  motor_on = false;
+}
 void motorStop() {
   while (motor_speed > 20) {
     motor_speed--;
