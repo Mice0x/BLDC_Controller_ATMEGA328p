@@ -38,7 +38,7 @@ void setup() {
   TCCR2B = 0x01;
   // Analog comparator setting
   ACSR   = 0x10;           // Disable and clear (flag bit) analog comparator interrupt
-  
+
   Wire.begin(ADDRESS);
   Wire.onReceive(pwmRcv);
 }
@@ -61,9 +61,6 @@ ISR (ANALOG_COMP_vect) {
     bldc_reverse();
   }
   step_t = micros() - start_t; // ~ Zeit bis zum Naechsten step
-  j++;
-  x += step_t;
-  y += sq(step_t - median);
   start_t = micros();
   bldc_step++;
   bldc_step %= 6;
@@ -128,48 +125,33 @@ void bldc_reverse() {
 }
 
 void loop() {
-  while (1) {
-    if(IsMotorStuck()){
-      rapidStop();
-      delay(3000);
-      }
-    if (!(motor_on)) {
-      motorStart();
-    }
-    if (pwm_receive < PWM_MIN_DUTY) {
-      motorStop();
-    }
-    while (motor_speed < pwm_receive && motor_speed < 255 && motor_on) {
-      motor_speed++;
-      SET_PWM_DUTY(motor_speed);
-      delay(20);
-    }
-    while (motor_speed > pwm_receive  && motor_speed > 0 && motor_on) {
-      motor_speed--;
-      SET_PWM_DUTY(motor_speed);
-      delay(20);
-    }
+  if (IsMotorStuck()) {
+    rapidStop();
+    delay(1000);
+  }
+  if (!(motor_on)) {
+    motorStart();
+    delay(500);
+  }
+  if (pwm_receive < PWM_MIN_DUTY) {
+    motorStop();
+  }
+  while (motor_speed < pwm_receive && motor_speed < 255 && motor_on) {
+    motor_speed++;
+    SET_PWM_DUTY(motor_speed);
+    delay(5);
+  }
+  while (motor_speed > pwm_receive  && motor_speed > 0 && motor_on) {
+    motor_speed--;
+    SET_PWM_DUTY(motor_speed);
+    delay(5);
   }
 }
 
 bool IsMotorStuck() {
   bool motor_stuck = false;
-  if (j >= 10000) {
-    s = sqrt(y / j); //standart abweichung wird berechnet
-    median = x / j; //median wird berechnet
-    if (median < 90 && s > 20) {
-      if (cnt >= 1) {
-        motor_stuck = true;
-        cnt = 0;
-      } else {
-        cnt++;
-      }
-    } else {
-      cnt = 0;
-    }
-    y = 0;
-    x = 0;
-    j = 0;
+  if (step_t >= 600) {
+    motor_stuck = true;
   }
   return motor_stuck;
 }
