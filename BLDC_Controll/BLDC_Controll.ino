@@ -1,8 +1,3 @@
-/* Sensorless brushless DC (BLDC) motor control with Arduino UNO (Arduino DIY ESC).
-   This is a free software with NO WARRANTY.
-   https://simple-circuit.com/
-*/
-
 #include <Wire.h>
 
 #define ADDRESS       0x08
